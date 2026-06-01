@@ -88,3 +88,34 @@ All lab work is tracked under `docs/phases/`.
 3. Decision returns `allow`, `deny`, `require_approval`, or `redact`.
 4. Evidence event is captured.
 5. Dashboard and evidence replay read backend state.
+
+## Recruiter / Client Demo Script
+
+Public demo:
+
+- Frontend: https://securethecloud-ai-control-plane.fly.dev
+- Backend health: https://securethecloud-ai-control-plane-api.fly.dev/health
+
+### Demo Story
+
+SecureTheCloud AI Control Plane demonstrates how regulated organizations can let AI assist, summarize, and recommend while preventing unauthorized sensitive data access, tool invocation, workflow execution, or regulated information exposure.
+
+### Recommended Walkthrough
+
+1. Open the Executive Risk Center.
+2. Explain risk distribution, decision distribution, policy violations, approval pressure, and tool-call firewall posture.
+3. Submit a restricted data request from the AI Access Portal.
+4. Show the Governed AI Decision Pipeline.
+5. Show the Tool-Call Firewall requiring approval for sensitive tools.
+6. Approve, reject, or escalate the request in the Human Approval Workspace.
+7. Show Evidence Replay capturing decision, reviewer action, risk tier, and blocked/allowed tool calls.
+
+### Demo Doctrine
+
+AI may assist, summarize, and recommend.
+
+AI may not access sensitive data, invoke tools, expose regulated information, or execute actions without identity, policy, approval, and evidence validation.
+
+### Lab Boundary
+
+This is a public lab demonstration. It does not provide enterprise IAM, production authorization, real regulated-system access, real customer data processing, SOC 2 certification, production audit assurance, or production enforcement authority.

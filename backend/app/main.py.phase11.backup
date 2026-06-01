@@ -1,12 +1,11 @@
-import os
 from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Literal
+from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, MetaData, String, Table, Text, create_engine, delete, insert, select
 
 
 class DataClassification(str, Enum):
@@ -87,13 +86,12 @@ class Health(BaseModel):
     status: str
     service: str
     lab_mode: bool
-    persistence: str
 
 
 class ApprovalAction(BaseModel):
     action: Literal["approve", "reject", "escalate"]
     reviewer: str = "Security Officer"
-    note: str = "Reviewed in Phase 12 hardened demo workspace"
+    note: str = "Reviewed in Phase 8 Human Approval Workspace"
 
 
 class ToolFirewallDecision(BaseModel):
@@ -102,86 +100,25 @@ class ToolFirewallDecision(BaseModel):
     reason: str
 
 
-def normalize_database_url(url: str) -> str:
-    if url.startswith("postgres://"):
-        return "postgresql+psycopg://" + url[len("postgres://") :]
-    if url.startswith("postgresql://"):
-        return "postgresql+psycopg://" + url[len("postgresql://") :]
-    return url
-
-
-DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./demo.db"))
-PERSISTENCE_MODE = "postgres" if DATABASE_URL.startswith("postgresql+psycopg://") else "sqlite"
-
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
-
-metadata = MetaData()
-requests_table = Table(
-    "ai_requests",
-    metadata,
-    Column("request_id", String(80), primary_key=True),
-    Column("created_at", String(80), nullable=False),
-    Column("payload", Text, nullable=False),
+app = FastAPI(
+    title="SecureTheCloud AI Control Plane API",
+    version="0.2.0",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+REQUESTS: list[AIRequestRecord] = []
 
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def init_db() -> None:
-    metadata.create_all(engine)
-
-
-def save_record(record: AIRequestRecord) -> None:
-    payload = record.model_dump_json()
-
-    with engine.begin() as conn:
-        conn.execute(delete(requests_table).where(requests_table.c.request_id == record.request_id))
-        conn.execute(
-            insert(requests_table).values(
-                request_id=record.request_id,
-                created_at=record.created_at.isoformat(),
-                payload=payload,
-            )
-        )
-
-
-def list_records() -> list[AIRequestRecord]:
-    with engine.begin() as conn:
-        rows = conn.execute(
-            select(requests_table.c.payload).order_by(requests_table.c.created_at.desc())
-        ).all()
-
-    return [AIRequestRecord.model_validate_json(row.payload) for row in rows]
-
-
-def find_record(request_id: str) -> AIRequestRecord | None:
-    with engine.begin() as conn:
-        row = conn.execute(
-            select(requests_table.c.payload).where(requests_table.c.request_id == request_id)
-        ).first()
-
-    if not row:
-        return None
-
-    return AIRequestRecord.model_validate_json(row.payload)
-
-
-def count_records() -> int:
-    return len(list_records())
-
-
-def delete_all_records() -> None:
-    with engine.begin() as conn:
-        conn.execute(delete(requests_table))
-
-
-def make_request_id() -> str:
-    import uuid
-
-    return f"req_{uuid.uuid4().hex[:10]}"
 
 
 def evaluate_tool_firewall(request: AIRequestCreate) -> list[ToolFirewallDecision]:
@@ -190,6 +127,12 @@ def evaluate_tool_firewall(request: AIRequestCreate) -> list[ToolFirewallDecisio
     for tool in request.tool_calls:
         status: Literal["allowed", "blocked", "requires_approval", "redacted"] = "allowed"
         reason = "Tool call is within current policy boundary."
+
+        sensitive = request.data_classification in {
+            DataClassification.confidential,
+            DataClassification.regulated,
+            DataClassification.restricted,
+        }
 
         if request.approval_status == "rejected":
             status = "blocked"
@@ -229,7 +172,13 @@ def evaluate_tool_firewall(request: AIRequestCreate) -> list[ToolFirewallDecisio
                 elif tool == ToolCall.send_message:
                     reason = "send_message is blocked until approval because AI cannot send messages without human review."
 
-        decisions.append(ToolFirewallDecision(tool=tool, status=status, reason=reason))
+        decisions.append(
+            ToolFirewallDecision(
+                tool=tool,
+                status=status,
+                reason=reason,
+            )
+        )
 
     return decisions
 
@@ -330,15 +279,15 @@ def create_record(request: AIRequestCreate) -> AIRequestRecord:
     result = evaluate_policy(request)
     return AIRequestRecord(
         **request.model_dump(),
-        request_id=make_request_id(),
+        request_id=f"req_{uuid4().hex[:10]}",
         created_at=now(),
         policy_result=result,
         final_outcome=result.decision.value,
     )
 
 
-def seed_demo_if_empty() -> None:
-    if count_records() > 0:
+def seed() -> None:
+    if REQUESTS:
         return
 
     examples = [
@@ -391,33 +340,17 @@ def seed_demo_if_empty() -> None:
     ]
 
     for item in examples:
-        save_record(create_record(item))
-
-
-cors_origins = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,https://securethecloud-ai-control-plane.fly.dev",
-    ).split(",")
-    if origin.strip()
-]
-
-app = FastAPI(title="SecureTheCloud AI Control Plane API", version="0.3.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Demo-Reset-Token"],
-)
+        REQUESTS.append(create_record(item))
 
 
 @app.on_event("startup")
 def startup() -> None:
-    init_db()
-    seed_demo_if_empty()
+    seed()
+
+
+@app.post("/api/tool-firewall/preview", response_model=list[ToolFirewallDecision])
+def tool_firewall_preview(request: AIRequestCreate):
+    return evaluate_tool_firewall(request)
 
 
 @app.get("/health", response_model=Health)
@@ -426,116 +359,90 @@ def health():
         status="ok",
         service="securethecloud-ai-control-plane",
         lab_mode=True,
-        persistence=PERSISTENCE_MODE,
     )
-
-
-@app.post("/api/tool-firewall/preview", response_model=list[ToolFirewallDecision])
-def tool_firewall_preview(request: AIRequestCreate):
-    return evaluate_tool_firewall(request)
 
 
 @app.get("/api/dashboard", response_model=DashboardSummary)
 def dashboard():
-    records = list_records()
-
     return DashboardSummary(
-        total_requests=len(records),
-        denied_requests=sum(r.policy_result.decision == PolicyDecision.deny for r in records),
-        high_risk_requests=sum(r.policy_result.risk_tier in {"high", "critical"} for r in records),
-        approval_required=sum(r.policy_result.decision == PolicyDecision.require_approval for r in records),
-        redacted_requests=sum(r.policy_result.decision == PolicyDecision.redact for r in records),
+        total_requests=len(REQUESTS),
+        denied_requests=sum(r.policy_result.decision == PolicyDecision.deny for r in REQUESTS),
+        high_risk_requests=sum(r.policy_result.risk_tier in {"high", "critical"} for r in REQUESTS),
+        approval_required=sum(r.policy_result.decision == PolicyDecision.require_approval for r in REQUESTS),
+        redacted_requests=sum(r.policy_result.decision == PolicyDecision.redact for r in REQUESTS),
         sensitive_data_attempts=sum(
-            r.data_classification in {
-                DataClassification.confidential,
-                DataClassification.regulated,
-                DataClassification.restricted,
-            }
-            for r in records
+            r.data_classification in {DataClassification.confidential, DataClassification.regulated, DataClassification.restricted}
+            for r in REQUESTS
         ),
-        policy_violations=sum(
-            r.policy_result.decision in {PolicyDecision.deny, PolicyDecision.escalate}
-            for r in records
-        ),
-        human_approvals=sum(r.approval_status == "approved" for r in records),
+        policy_violations=sum(r.policy_result.decision in {PolicyDecision.deny, PolicyDecision.escalate} for r in REQUESTS),
+        human_approvals=sum(r.approval_status == "approved" for r in REQUESTS),
     )
 
 
 @app.get("/api/requests", response_model=list[AIRequestRecord])
 def requests():
-    return list_records()
+    return list(reversed(REQUESTS))
 
 
 @app.post("/api/requests", response_model=AIRequestRecord)
 def submit_request(request: AIRequestCreate):
     record = create_record(request)
-    save_record(record)
+    REQUESTS.append(record)
     return record
 
 
 @app.get("/api/evidence/{request_id}", response_model=AIRequestRecord)
 def evidence(request_id: str):
-    record = find_record(request_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Request not found")
-    return record
+    for record in REQUESTS:
+        if record.request_id == request_id:
+            return record
+    raise HTTPException(status_code=404, detail="Request not found")
 
 
 @app.patch("/api/requests/{request_id}/approval", response_model=AIRequestRecord)
 def review_request(request_id: str, action: ApprovalAction):
-    record = find_record(request_id)
+    for index, record in enumerate(REQUESTS):
+        if record.request_id != request_id:
+            continue
 
-    if not record:
-        raise HTTPException(status_code=404, detail="Request not found")
+        next_status = {
+            "approve": "approved",
+            "reject": "rejected",
+            "escalate": "escalated",
+        }[action.action]
 
-    next_status = {
-        "approve": "approved",
-        "reject": "rejected",
-        "escalate": "escalated",
-    }[action.action]
+        updated_request = AIRequestCreate(
+            user=record.user,
+            role=record.role,
+            department=record.department,
+            clearance_level=record.clearance_level,
+            business_purpose=record.business_purpose,
+            request_type=record.request_type,
+            prompt=record.prompt,
+            data_classification=record.data_classification,
+            tool_calls=record.tool_calls,
+            approval_status=next_status,
+            device_trust=record.device_trust,
+            location_context=record.location_context,
+        )
 
-    updated_request = AIRequestCreate(
-        user=record.user,
-        role=record.role,
-        department=record.department,
-        clearance_level=record.clearance_level,
-        business_purpose=record.business_purpose,
-        request_type=record.request_type,
-        prompt=record.prompt,
-        data_classification=record.data_classification,
-        tool_calls=record.tool_calls,
-        approval_status=next_status,
-        device_trust=record.device_trust,
-        location_context=record.location_context,
-    )
+        result = evaluate_policy(updated_request)
 
-    result = evaluate_policy(updated_request)
+        updated = AIRequestRecord(
+            **updated_request.model_dump(),
+            request_id=record.request_id,
+            created_at=record.created_at,
+            model=record.model,
+            prompt_version=record.prompt_version,
+            policy_result=result,
+            final_outcome=result.decision.value,
+            reviewer=action.reviewer,
+            reviewer_action=action.action,
+            reviewer_note=action.note,
+            reviewed_at=now(),
+        )
 
-    updated = AIRequestRecord(
-        **updated_request.model_dump(),
-        request_id=record.request_id,
-        created_at=record.created_at,
-        model=record.model,
-        prompt_version=record.prompt_version,
-        policy_result=result,
-        final_outcome=result.decision.value,
-        reviewer=action.reviewer,
-        reviewer_action=action.action,
-        reviewer_note=action.note,
-        reviewed_at=now(),
-    )
+        REQUESTS[index] = updated
+        return updated
 
-    save_record(updated)
-    return updated
-
-
-@app.post("/api/demo/reset", response_model=list[AIRequestRecord])
-def reset_demo(x_demo_reset_token: str | None = Header(default=None)):
-    expected = os.getenv("DEMO_RESET_TOKEN")
-
-    if expected and x_demo_reset_token != expected:
-        raise HTTPException(status_code=403, detail="Invalid demo reset token")
-
-    delete_all_records()
-    seed_demo_if_empty()
-    return list_records()
+    raise HTTPException(status_code=404, detail="Request not found")
