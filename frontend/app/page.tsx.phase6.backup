@@ -1,0 +1,211 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+const API_BASE = "http://localhost:8000";
+
+type RequestRecord = {
+  request_id: string;
+  user: string;
+  role: string;
+  department: string;
+  request_type: string;
+  data_classification: string;
+  policy_result: {
+    decision: string;
+    reason: string;
+    risk_tier: string;
+    human_approval_required: boolean;
+    redactions_required: boolean;
+    blocked_tool_calls: string[];
+  };
+  final_outcome: string;
+};
+
+type Dashboard = {
+  total_requests: number;
+  denied_requests: number;
+  high_risk_requests: number;
+  approval_required: number;
+  sensitive_data_attempts: number;
+  policy_violations: number;
+};
+
+const initialForm = {
+  user: "Taylor Morgan",
+  role: "Analyst",
+  department: "Finance",
+  clearance_level: 3,
+  business_purpose: "Quarterly risk review",
+  request_type: "Summarize sensitive records",
+  prompt: "Summarize restricted financial customer records for executive review.",
+  data_classification: "restricted",
+  tool_calls: ["search_documents"],
+  approval_status: "not_requested",
+  device_trust: "trusted",
+  location_context: "corporate",
+};
+
+export default function Home() {
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [form, setForm] = useState(initialForm);
+  const [status, setStatus] = useState("");
+
+  async function loadData() {
+    const [dashboardRes, requestsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/dashboard`, { cache: "no-store" }),
+      fetch(`${API_BASE}/api/requests`, { cache: "no-store" }),
+    ]);
+
+    setDashboard(await dashboardRes.json());
+    setRequests(await requestsRes.json());
+  }
+
+  useEffect(() => {
+    loadData().catch((err) => setStatus(`Load failed: ${err.message}`));
+  }, []);
+
+  async function submitRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("Submitting governed AI request...");
+
+    const res = await fetch(`${API_BASE}/api/requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+
+    if (!res.ok) {
+      setStatus(`Submit failed: ${res.status}`);
+      return;
+    }
+
+    const created = await res.json();
+    setStatus(`Decision recorded: ${created.policy_result.decision.toUpperCase()} / ${created.policy_result.risk_tier}`);
+    await loadData();
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
+      <section className="max-w-7xl mx-auto space-y-8">
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-8 shadow-xl">
+          <p className="text-cyan-300 text-sm font-bold tracking-widest uppercase">Recommended Lab</p>
+          <h1 className="text-5xl font-black mt-4">SecureTheCloud AI Control Plane</h1>
+          <p className="text-slate-300 mt-4 text-lg">
+            A governed AI access, policy, approval, and evidence platform for regulated enterprise workflows.
+          </p>
+          <div className="mt-6 rounded-2xl bg-sky-950 border-l-4 border-cyan-400 p-4">
+            <strong>Platform Doctrine:</strong> AI may assist, summarize, and recommend. AI may not access sensitive data,
+            invoke tools, expose regulated information, or execute actions without identity, policy, approval, and evidence validation.
+          </div>
+        </div>
+
+        {dashboard && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Metric label="AI Requests" value={dashboard.total_requests} />
+            <Metric label="Denied" value={dashboard.denied_requests} />
+            <Metric label="High Risk" value={dashboard.high_risk_requests} />
+            <Metric label="Approval Gates" value={dashboard.approval_required} />
+            <Metric label="Sensitive Attempts" value={dashboard.sensitive_data_attempts} />
+            <Metric label="Policy Violations" value={dashboard.policy_violations} />
+          </div>
+        )}
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          <form onSubmit={submitRequest} className="rounded-3xl border border-slate-700 bg-slate-900 p-6 space-y-4">
+            <div>
+              <p className="text-cyan-300 text-sm font-bold">Phase 6</p>
+              <h2 className="text-2xl font-bold">AI Access Request Portal</h2>
+              <p className="text-slate-400 text-sm mt-1">Submit a governed AI workflow request and capture the policy decision.</p>
+            </div>
+
+            <Input label="User" value={form.user} onChange={(v) => setForm({ ...form, user: v })} />
+            <Input label="Role" value={form.role} onChange={(v) => setForm({ ...form, role: v })} />
+            <Input label="Department" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
+            <Input label="Business Purpose" value={form.business_purpose} onChange={(v) => setForm({ ...form, business_purpose: v })} />
+            <Input label="Request Type" value={form.request_type} onChange={(v) => setForm({ ...form, request_type: v })} />
+
+            <label className="block">
+              <span className="text-sm text-slate-300">Data Classification</span>
+              <select
+                className="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 p-3"
+                value={form.data_classification}
+                onChange={(e) => setForm({ ...form, data_classification: e.target.value })}
+              >
+                <option value="public">public</option>
+                <option value="internal">internal</option>
+                <option value="confidential">confidential</option>
+                <option value="regulated">regulated</option>
+                <option value="restricted">restricted</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm text-slate-300">Prompt</span>
+              <textarea
+                className="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 p-3 min-h-28"
+                value={form.prompt}
+                onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+              />
+            </label>
+
+            <button className="w-full rounded-xl bg-cyan-400 text-slate-950 font-bold py-3 hover:bg-cyan-300">
+              Submit Governed AI Request
+            </button>
+
+            {status && <p className="text-sm text-cyan-200">{status}</p>}
+          </form>
+
+          <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6">
+            <p className="text-cyan-300 text-sm font-bold">Evidence Replay</p>
+            <h2 className="text-2xl font-bold mt-2">Latest Governed AI Workflow Decisions</h2>
+
+            <div className="mt-6 space-y-4">
+              {requests.map((req) => (
+                <div key={req.request_id} className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="font-bold">{req.request_type}</h3>
+                      <p className="text-sm text-slate-400">{req.request_id}</p>
+                      <p className="text-sm mt-2">{req.user} · {req.role} · {req.department}</p>
+                    </div>
+                    <span className="rounded-full bg-sky-900 px-3 py-1 text-xs font-bold text-cyan-200">
+                      {req.policy_result.decision.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-sm mt-3 text-slate-300">
+                    Classification: <strong>{req.data_classification}</strong> · Risk: <strong>{req.policy_result.risk_tier}</strong>
+                  </p>
+                  <p className="text-sm mt-2 text-slate-300">{req.policy_result.reason}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+      <div className="text-3xl font-black">{value}</div>
+      <div className="text-sm text-slate-300 mt-1">{label}</div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="text-sm text-slate-300">{label}</span>
+      <input
+        className="mt-1 w-full rounded-xl bg-slate-950 border border-slate-700 p-3"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}

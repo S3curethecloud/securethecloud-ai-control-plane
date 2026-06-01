@@ -1,0 +1,24 @@
+:root {
+  color-scheme: dark;
+  background: #07111f;
+  color: #e5edf8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(circle at top left, #14345f 0, #07111f 38%, #04070d 100%); }
+a { color: inherit; text-decoration: none; }
+.container { max-width: 1180px; margin: 0 auto; padding: 32px; }
+.hero { border: 1px solid rgba(148,163,184,.2); background: rgba(15,23,42,.76); border-radius: 28px; padding: 32px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+.kicker { color: #7dd3fc; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; }
+h1 { font-size: clamp(36px, 6vw, 72px); line-height: .95; margin: 12px 0; }
+.subtitle { color: #b6c4d8; font-size: 18px; max-width: 760px; }
+.doctrine { margin-top: 24px; padding: 18px; border-left: 4px solid #38bdf8; background: rgba(14,165,233,.08); border-radius: 18px; color: #d8eefc; }
+.grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 24px; }
+.card { border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.72); border-radius: 22px; padding: 20px; }
+.metric { font-size: 34px; font-weight: 800; }
+.label { color: #9fb1c8; font-size: 13px; }
+.badge { display:inline-flex; padding: 6px 10px; border-radius: 999px; background: rgba(125,211,252,.12); color: #bae6fd; font-size: 12px; font-weight: 700; }
+.table { width: 100%; border-collapse: collapse; margin-top: 16px; overflow: hidden; border-radius: 16px; }
+th, td { border-bottom: 1px solid rgba(148,163,184,.16); padding: 14px; text-align: left; vertical-align: top; }
+th { color: #93c5fd; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.small { color: #9fb1c8; font-size: 13px; }

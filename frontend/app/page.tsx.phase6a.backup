@@ -1,0 +1,283 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+const API_BASE = "http://localhost:8000";
+
+type RequestRecord = {
+  request_id: string;
+  user: string;
+  role: string;
+  department: string;
+  request_type: string;
+  data_classification: string;
+  policy_result: {
+    decision: string;
+    reason: string;
+    risk_tier: string;
+  };
+};
+
+type Dashboard = {
+  total_requests: number;
+  denied_requests: number;
+  high_risk_requests: number;
+  approval_required: number;
+  sensitive_data_attempts: number;
+  policy_violations: number;
+};
+
+const initialForm = {
+  user: "Taylor Morgan",
+  role: "Analyst",
+  department: "Finance",
+  clearance_level: 3,
+  business_purpose: "Quarterly risk review",
+  request_type: "Summarize sensitive records",
+  prompt: "Summarize restricted financial customer records for executive review.",
+  data_classification: "restricted",
+  tool_calls: ["search_documents"],
+  approval_status: "not_requested",
+  device_trust: "trusted",
+  location_context: "corporate",
+};
+
+const modules = [
+  ["Governance & Policy", "Policy decisioning, doctrine, access gates", "cyan"],
+  ["Evidence & Audit", "Replayable request evidence and audit trail", "green"],
+  ["Risk Intelligence", "Risk-tiering for AI workflow decisions", "blue"],
+  ["Identity / Context", "Role, clearance, purpose, device, location", "amber"],
+  ["Tool-Call Firewall", "Controls APIs, records, files, messages, workflows", "pink"],
+];
+
+const suiteModules = [
+  ["AI Access Portal", "Submit governed AI workflow requests"],
+  ["Data Classification", "Public, internal, confidential, regulated, restricted"],
+  ["Policy Decision Engine", "Allow, deny, redact, escalate, require approval"],
+  ["Human Approval Gate", "Approval status before sensitive execution"],
+  ["Evidence Replay", "Every decision is reviewable"],
+  ["Executive Dashboard", "Leadership view of AI governance posture"],
+];
+
+export default function Home() {
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [form, setForm] = useState(initialForm);
+  const [status, setStatus] = useState("");
+
+  async function loadData() {
+    const [dashboardRes, requestsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/dashboard`, { cache: "no-store" }),
+      fetch(`${API_BASE}/api/requests`, { cache: "no-store" }),
+    ]);
+    setDashboard(await dashboardRes.json());
+    setRequests(await requestsRes.json());
+  }
+
+  useEffect(() => {
+    loadData().catch((err) => setStatus(`Load failed: ${err.message}`));
+  }, []);
+
+  async function submitRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("Submitting governed AI request...");
+
+    const res = await fetch(`${API_BASE}/api/requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+
+    if (!res.ok) {
+      setStatus(`Submit failed: ${res.status}`);
+      return;
+    }
+
+    const created = await res.json();
+    setStatus(`Decision recorded: ${created.policy_result.decision.toUpperCase()} / ${created.policy_result.risk_tier}`);
+    await loadData();
+  }
+
+  return (
+    <main style={styles.page}>
+      <section style={styles.shell}>
+        <header style={styles.hero}>
+          <div>
+            <div style={styles.brand}>🛡️ SecureTheCloud</div>
+            <p style={styles.kicker}>Recommended Lab</p>
+            <h1 style={styles.title}>SecureTheCloud AI Control Plane</h1>
+            <p style={styles.subtitle}>A governed AI access, policy, approval, and evidence platform for regulated enterprise workflows.</p>
+          </div>
+          <div style={styles.principles}>
+            <strong>Portfolio Principles</strong>
+            <span>✓ Modular, not monolithic</span>
+            <span>✓ Evidence-first governance</span>
+            <span>✓ Deterministic policy gates</span>
+            <span>✓ Audit-ready workflow replay</span>
+          </div>
+        </header>
+
+        <section style={styles.fabric}>
+          <h2 style={styles.sectionTitle}>Shared Trust Fabric</h2>
+          <p style={styles.sectionSub}>Common governance services for AI workflow control.</p>
+          <div style={styles.moduleRow}>
+            {modules.map(([name, desc, color]) => (
+              <div key={name} style={{ ...styles.fabricCard, borderColor: token(color) }}>
+                <div style={{ ...styles.icon, color: token(color) }}>⬡</div>
+                <strong>{name}</strong>
+                <span>{desc}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={styles.suites}>
+          <h2 style={styles.sectionTitle}>AI Governance Control Modules</h2>
+          <div style={styles.suiteGrid}>
+            {suiteModules.map(([name, desc]) => (
+              <div key={name} style={styles.suiteCard}>
+                <div style={styles.cube}>◇</div>
+                <div>
+                  <strong>{name}</strong>
+                  <p>{desc}</p>
+                  <span style={styles.ready}>Lab Ready</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {dashboard && (
+          <section style={styles.metrics}>
+            <Metric label="AI Requests" value={dashboard.total_requests} />
+            <Metric label="Denied" value={dashboard.denied_requests} />
+            <Metric label="High Risk" value={dashboard.high_risk_requests} />
+            <Metric label="Approval Gates" value={dashboard.approval_required} />
+            <Metric label="Sensitive Attempts" value={dashboard.sensitive_data_attempts} />
+            <Metric label="Policy Violations" value={dashboard.policy_violations} />
+          </section>
+        )}
+
+        <section style={styles.workspace}>
+          <form onSubmit={submitRequest} style={styles.panel}>
+            <p style={styles.kicker}>Phase 6A</p>
+            <h2 style={styles.panelTitle}>AI Access Request Portal</h2>
+            <p style={styles.muted}>Submit a governed AI workflow request and capture policy evidence.</p>
+
+            <Input label="User" value={form.user} onChange={(v) => setForm({ ...form, user: v })} />
+            <Input label="Role" value={form.role} onChange={(v) => setForm({ ...form, role: v })} />
+            <Input label="Department" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
+            <Input label="Business Purpose" value={form.business_purpose} onChange={(v) => setForm({ ...form, business_purpose: v })} />
+            <Input label="Request Type" value={form.request_type} onChange={(v) => setForm({ ...form, request_type: v })} />
+
+            <label style={styles.label}>Data Classification</label>
+            <select style={styles.input} value={form.data_classification} onChange={(e) => setForm({ ...form, data_classification: e.target.value })}>
+              <option value="public">public</option>
+              <option value="internal">internal</option>
+              <option value="confidential">confidential</option>
+              <option value="regulated">regulated</option>
+              <option value="restricted">restricted</option>
+            </select>
+
+            <label style={styles.label}>Prompt</label>
+            <textarea style={{ ...styles.input, minHeight: 110 }} value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} />
+
+            <button style={styles.button}>Submit Governed AI Request</button>
+            {status && <p style={styles.status}>{status}</p>}
+          </form>
+
+          <div style={styles.panel}>
+            <p style={styles.kicker}>Evidence Replay</p>
+            <h2 style={styles.panelTitle}>Latest Governed AI Workflow Decisions</h2>
+            <div style={styles.feed}>
+              {requests.map((req) => (
+                <article key={req.request_id} style={styles.record}>
+                  <div style={styles.recordHead}>
+                    <div>
+                      <strong>{req.request_type}</strong>
+                      <p>{req.request_id}</p>
+                    </div>
+                    <span style={styles.badge}>{req.policy_result.decision.toUpperCase()}</span>
+                  </div>
+                  <p>{req.user} · {req.role} · {req.department}</p>
+                  <p>Classification: <b>{req.data_classification}</b> · Risk: <b>{req.policy_result.risk_tier}</b></p>
+                  <p>{req.policy_result.reason}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <footer style={styles.footer}>
+          Evidence proves · Risk informs · Policy decides · Frontend renders governed evidence only
+        </footer>
+      </section>
+    </main>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={styles.metric}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <>
+      <label style={styles.label}>{label}</label>
+      <input style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
+    </>
+  );
+}
+
+function token(color: string) {
+  const map: Record<string, string> = {
+    cyan: "#22d3ee",
+    green: "#6ee75f",
+    blue: "#38bdf8",
+    amber: "#f59e0b",
+    pink: "#e879f9",
+  };
+  return map[color] ?? "#22d3ee";
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  page: { minHeight: "100vh", background: "radial-gradient(circle at top left,#132b46,#06111f 45%,#020617)", color: "#eaf2ff", fontFamily: "Inter, Arial, sans-serif", padding: 28 },
+  shell: { maxWidth: 1320, margin: "0 auto" },
+  hero: { border: "1px solid #334155", borderRadius: 24, padding: 34, display: "flex", justifyContent: "space-between", gap: 24, background: "rgba(15,23,42,.78)", boxShadow: "0 24px 80px rgba(0,0,0,.35)" },
+  brand: { fontSize: 24, fontWeight: 900, color: "#facc15", marginBottom: 18 },
+  kicker: { color: "#67e8f9", textTransform: "uppercase", letterSpacing: 2, fontSize: 12, fontWeight: 800 },
+  title: { fontSize: 60, lineHeight: .95, margin: "10px 0", fontWeight: 950 },
+  subtitle: { color: "#cbd5e1", fontSize: 18 },
+  principles: { border: "1px solid #94a3b8", borderRadius: 16, padding: 18, minWidth: 280, display: "grid", gap: 10, background: "rgba(2,6,23,.6)" },
+  fabric: { marginTop: 18, border: "1px solid #475569", borderRadius: 22, padding: 22, background: "rgba(2,6,23,.6)" },
+  sectionTitle: { textAlign: "center", textTransform: "uppercase", letterSpacing: 5, fontSize: 24, margin: 0 },
+  sectionSub: { textAlign: "center", color: "#cbd5e1", marginTop: 6 },
+  moduleRow: { display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 16, marginTop: 18 },
+  fabricCard: { border: "2px solid", borderRadius: 12, padding: 18, background: "linear-gradient(135deg,rgba(8,47,73,.55),rgba(2,6,23,.8))", minHeight: 120, display: "grid", gap: 8 },
+  icon: { fontSize: 34 },
+  suites: { marginTop: 18, border: "1px solid #475569", borderRadius: 22, padding: 22, background: "rgba(2,6,23,.6)" },
+  suiteGrid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginTop: 18 },
+  suiteCard: { border: "1px solid #22d3ee", borderRadius: 14, padding: 18, display: "flex", gap: 14, background: "rgba(8,47,73,.28)" },
+  cube: { color: "#6ee75f", fontSize: 36 },
+  ready: { display: "inline-block", marginTop: 8, border: "1px solid #6ee75f", color: "#86efac", borderRadius: 999, padding: "4px 12px", fontSize: 12 },
+  metrics: { display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 14, marginTop: 18 },
+  metric: { border: "1px solid #334155", borderRadius: 18, padding: 18, background: "rgba(15,23,42,.8)" },
+  workspace: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 18 },
+  panel: { border: "1px solid #334155", borderRadius: 22, padding: 24, background: "rgba(15,23,42,.86)" },
+  panelTitle: { fontSize: 26, margin: "8px 0" },
+  muted: { color: "#cbd5e1" },
+  label: { display: "block", marginTop: 12, marginBottom: 5, color: "#cbd5e1", fontSize: 13, fontWeight: 700 },
+  input: { width: "100%", boxSizing: "border-box", borderRadius: 12, border: "1px solid #475569", background: "#020617", color: "#eaf2ff", padding: 12 },
+  button: { marginTop: 16, width: "100%", border: 0, borderRadius: 12, background: "#22d3ee", color: "#020617", padding: 14, fontWeight: 900, cursor: "pointer" },
+  status: { color: "#67e8f9", fontWeight: 700 },
+  feed: { display: "grid", gap: 14, marginTop: 18 },
+  record: { border: "1px solid #334155", borderRadius: 16, padding: 16, background: "#020617" },
+  recordHead: { display: "flex", justifyContent: "space-between", gap: 12 },
+  badge: { background: "#0c4a6e", color: "#a5f3fc", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 900 },
+  footer: { marginTop: 18, border: "1px solid #334155", borderRadius: 14, padding: 14, textAlign: "center", color: "#cbd5e1", background: "rgba(15,23,42,.75)" },
+};
